@@ -1387,6 +1387,27 @@ static LayoutRect backgroundRectForSection(const RenderTableSection& tableSectio
     return rect;
 }
 
+static LayoutRect backgroundRectForCol(const RenderTableCol& tableCol, const RenderTable& table)
+{
+    unsigned colStart = table.effectiveIndexOfColumn(tableCol);
+    unsigned colEnd = table.effectiveColumnAfter(colStart, table.effectiveSpanOfColumn(tableCol));
+    unsigned numCols = table.numEffCols();
+    if (colStart >= numCols || colStart >= colEnd)
+        return { };
+
+    auto hSpacing = table.hBorderSpacing();
+    auto inlineStart = hSpacing + table.columnPositions()[colStart];
+    auto inlineLength = table.columnPositions()[colEnd] - inlineStart;
+    auto blockLength = table.columnBlockLength();
+    if (!table.style().isLeftToRightDirection())
+        inlineStart = hSpacing + table.columnPositions()[numCols] - (inlineStart + inlineLength);
+
+    if (table.style().isVerticalWritingMode())
+        return { 0, inlineStart, blockLength, inlineLength };
+    else
+        return { inlineStart, 0, inlineLength, blockLength };
+}
+
 void RenderTableCell::paintBackgroundsBehindCell(PaintInfo& paintInfo, LayoutPoint paintOffset, RenderBox* backgroundObject, LayoutPoint backgroundPaintOffset)
 {
     ASSERT(backgroundObject);
@@ -1417,8 +1438,7 @@ void RenderTableCell::paintBackgroundsBehindCell(PaintInfo& paintInfo, LayoutPoi
     // Background images attached to the row or row group must span the row
     // or row group. Draw them at the backgroundObject's dimensions, but
     // clipped to this cell.
-    // FIXME: This should also apply to columns and column groups.
-    bool paintBackgroundObject = backgroundObject != this && bgLayer.hasImage() && !is<RenderTableCol>(backgroundObject);
+    bool paintBackgroundObject = backgroundObject != this && bgLayer.hasImage();
     // We have to clip here because the background would paint
     // on top of the borders otherwise. This only matters for cells and rows.
     bool shouldClip = paintBackgroundObject || (backgroundObject->hasLayer() && (backgroundObject == this || backgroundObject == parent()) && tableElt->collapseBorders());
@@ -1432,6 +1452,8 @@ void RenderTableCell::paintBackgroundsBehindCell(PaintInfo& paintInfo, LayoutPoi
     if (paintBackgroundObject) {
         if (auto* tableSectionRenderer = dynamicDowncast<RenderTableSection>(backgroundObject))
             fillRect = backgroundRectForSection(*tableSectionRenderer, *tableElt);
+        else if (auto* tableColRenderer = dynamicDowncast<RenderTableCol>(backgroundObject))
+            fillRect = backgroundRectForCol(*tableColRenderer, *tableElt);
         else
             fillRect = backgroundRectForRow(*backgroundObject, *tableElt);
         fillRect.moveBy(backgroundPaintOffset);
